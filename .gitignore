@@ -272,3 +272,4 @@ ASALocalRun/
 .localhistory/
 # BeatPulse healthcheck temp database
 healthchecksdb
+/boost_1_69_0/
