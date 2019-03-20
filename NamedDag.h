@@ -185,7 +185,17 @@ namespace bglx {
 	};
 
 
-
+	void fillInAuxDagInfo(DagAux& aux)
+	{
+		for (auto v : Range{ boost::vertices(aux) })
+		{
+			auto& prop = aux[v];
+			for (auto e : Range{ boost::out_edges(v, aux) })
+			{
+				prop.unVisitedOutEdges.emplace_back(e);
+			}
+		}
+	}
 	DagAux makeAuxDag(Dag& dag)
 	{
 		auto dagAux = DagAux{};
@@ -194,6 +204,7 @@ namespace bglx {
 			dagAux,
 			boost::vertex_copy(VCopier(dag, dagAux)).edge_copy(ECopier(dag, dagAux))
 		);
+		fillInAuxDagInfo(dagAux);
 		return dagAux;
 	}
 
@@ -203,6 +214,7 @@ namespace bglx {
 	{
 		//make an auxiliary dag containing additional informations
 		auto dagAux = makeAuxDag(dag);
+		
 		auto firstV = *boost::vertices(dagAux).first;
 		auto nrEdges = boost::num_edges(dag);
 		VAuxList unfinishedVList;
