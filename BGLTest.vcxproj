@@ -158,6 +158,10 @@
       </PrecompiledHeaderFile>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BoostGraphX\Common.h" />
+    <ClInclude Include="NamedDag.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
