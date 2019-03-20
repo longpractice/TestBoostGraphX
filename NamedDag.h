@@ -45,99 +45,157 @@ static void printEdges(const Dag& dag, const std::set<Edge>& edges)
         printEdge(dag, edge);
     }
     std::cout << "--------------------------------------------" << std::endl;
-}
-
-//a closed walk travels one edge only once(times of travelling cross an edge is not limited)
-//the start terminal vertex and the end terminal vertex is the same
-struct ClosedWalkInfo {
-    std::vector<Edge> eList;
-    std::set<Edge> eSet;
 };
+
+//some assumptions here have to be taken here. It is not in any docu, but for this type of 
+//adjacency_list, we the VertexProperty and EdgeProperty template does not affect
+//the vertex/edge iterators and the null vertex, we use this feasure to point one 
+using DagAuxPure = boost::adjacency_list<boost::setS, boost::setS, boost::bidirectionalS>;
+using VAux = DagAuxPure::vertex_descriptor;
+using EAux = DagAuxPure::edge_descriptor;
+using EAuxList = std::list<EAux>;
+using VAuxList = std::list<VAux>;
+using EAuxListIt = EAuxList::iterator;
+using VAuxListIt = VAuxList::iterator;
+
+static auto nullVAux()
+{
+	return boost::graph_traits<DagAuxPure>::null_vertex();
 }
 
-namespace std {
-template <>
-struct less<bglx::ClosedWalkInfo> {
-    bool operator()(const bglx::ClosedWalkInfo& lhs, const bglx::ClosedWalkInfo& rhs) const
-    {
-        return lhs.eList < rhs.eList;
-    }
+struct EAuxProp {
+    Edge eOrigin;
+    //hack here since we could not easily put EAux here for linked list
+    //it is only type erased, but the underlying type is still a EAux
+    //not violating strict-aliasing-rule
+	EAuxListIt eWalkListIt;
 };
+
+struct VAuxProp {
+    Vertex vOrigin;
+    std::list<EAux> unVisitedOutEdges;
+	std::list<EAux> visitedOutEdges;
+	VAuxListIt vUnfinishedListIt;
+};
+
+using DagAux = boost::adjacency_list<
+    boost::setS,
+    boost::setS,
+    boost::bidirectionalS,
+    VAuxProp,
+    EAuxProp>;
+
+using VAux = DagAux::vertex_descriptor;
+using EAux = DagAux::edge_descriptor;
+
+
+//the new closed walk must be starting from the edge that is refered to by 
+//itUnVisitedOutEdge, which points to the element of the aux[v].unVisitedOutEdges
+void insertNewClosedWalk(
+	VAux v, 
+	EAuxListIt itUnVisitedOutEdge,
+	std::list<EAux>& oldClosedWalk,
+	std::list<EAux>& newClosedWalk,
+	DagAux& aux
+)
+{
+	auto& prop = aux[v];
+
+	if (!prop.visitedOutEdges.empty())
+	{
+		//the visited out edge, which need to break the previous linked list
+		auto eOutVisited = *prop.visitedOutEdges.begin();
+		auto eOutVisitedIt = aux[eOutVisited].eWalkListIt;
+		oldClosedWalk.splice(eOutVisitedIt, newClosedWalk);
+	}
+	else
+	{
+		//old closed walk must be empty
+		std::swap(oldClosedWalk, newClosedWalk);
+	}
+	prop.unVisitedOutEdges.erase(itUnVisitedOutEdge);
 }
 
-namespace bglx {
-
-// pathInfo is a partial path starting from vStart and end at vStart
-// it is not yet a complete path and we need to add more edges to this path and in the process
-// we create more paths
-// The returned might still partial, we need to recall this method until all the edges are found
-std::set<ClosedWalkInfo> discoverNewClosedWalks(const Dag& dag, const ClosedWalkInfo& closedWalkInfo, Vertex vStart)
+std::pair<EAuxList> discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList)
 {
-    //edge list in the original closed walk
-    const auto& eList = closedWalkInfo.eList;
-    const auto& eSet = closedWalkInfo.eSet;
+	auto vFirst = v;
+	auto& prop = aux[v];
 
-    auto oldPathInfo = closedWalkInfo;
+	if (aux[v].unVisitedOutEdges.empty())
+	{
+		//we could not find any new walks from this v
+		return { aux[v].unVisitedOutEdges.end(), {} };
+	}
 
-    std::set<ClosedWalkInfo> newClosedWalks;
+	//use the first excape way
+	EAuxList newClosedWalk;
 
-    Vertex vLast;
-    if (!eList.empty()) {
-        //get the last edge
-        auto eLast = *(eList.end() - 1);
-        //find the last vertex
-        vLast = boost::target(eLast, dag);
+	do {
+		auto& vProp = aux[v];
+		auto itEOut = vProp.unVisitedOutEdges.begin();
+		auto eOut = *itEOut;
+		vProp.unVisitedOutEdges.erase(itEOut);
+		vProp.visitedOutEdges.emplace_back(eOut);
+		newClosedWalk.emplace_back(eOut);
+		aux[eOut].eWalkListIt = --newClosedWalk.end();
 
-    } else {
-        vLast = vStart;
-    }
 
-    //traverse
-    for (auto eOut : Range { boost::out_edges(vLast, dag) }) {
-        //no edge should be repeated
-        if (eSet.find(eOut) == eSet.end()) {
-            auto newPathInfo = closedWalkInfo;
-            newPathInfo.eSet.insert(eOut);
-            newPathInfo.eList.push_back(eOut);
-            newClosedWalks.insert(newPathInfo);
-        }
-    }
+		//v was partially visited before, if we have finished the last 
+		if (vProp.vUnfinishedListIt != unfinishedVList.end())
+		{
 
-    if (newClosedWalks.empty())
-        return { oldPathInfo };
-    return newClosedWalks;
+		}
+
+	} while (vLast != v);
+	
 }
 
-static std::set<ClosedWalkInfo> findAllEulerPaths(const Dag& dag, Vertex vStart)
+DagAux makeAuxDag(const Dag& dag)
 {
-    std::set<ClosedWalkInfo> paths = discoverNewClosedWalks(dag, {}, vStart);
-    std::set<ClosedWalkInfo> wellMadePaths;
-    while (!paths.empty()) {
-        auto itFirstPath = paths.begin();
-        auto generatedPaths = discoverNewClosedWalks(dag, *itFirstPath, vStart);
+    auto dagAux = DagAux {};
+    std::unordered_map<Vertex, VAux> vToVAux;
 
-        if (generatedPaths.size() == 1 && generatedPaths.begin()->eList == itFirstPath->eList) {
-            //nothing is changed, we have reached the end
-            wellMadePaths.insert(*itFirstPath);
-            paths.erase(itFirstPath);
-        } else {
-            //we have not reached the end
-            paths.erase(*itFirstPath);
-            for (auto info : generatedPaths) {
-                paths.insert(info);
-            }
-        }
+    for (auto v : Range { boost::vertices(dag) }) {
+        auto vAux = boost::add_vertex(dagAux);
+        //set the origin vertex
+        dagAux[vAux].vOrigin = v;
+        vToVAux[v] = vAux;
     }
 
-    auto fullPaths = std::set<ClosedWalkInfo> {};
+    for (auto e : Range { boost::edges(dag) }) {
+        auto src = boost::source(e, dag);
+        auto tgt = boost::target(e, dag);
+        auto srcAux = vToVAux.find(src)->second;
+        auto tgtAux = vToVAux.find(tgt)->second;
+        auto [eAux, ok] = boost::add_edge(srcAux, tgtAux, dagAux);
+        auto& eAuxProp = dagAux[eAux];
+        eAuxProp.eOrigin = e;
+        eAuxProp.pEAuxNext = nullptr;
+    }
+    return dagAux;
+}
+
+auto findEulerCycle_Hierholzer(const Dag& dag, Vertex vStart)
+{
+    //make an auxiliary dag containing additional informations
+    auto dagAux = makeAuxDag(dag);
     auto nrEdges = boost::num_edges(dag);
 
-    for (auto [eList, eSet] : wellMadePaths) {
-        if (eList.size() == nrEdges)
-            fullPaths.insert({ eList, eSet });
-    }
+    //to be pointed at by the EAuxProp
+    std::vector<EAux> eAuxNexts;
+    eAuxNexts.reserve(nrEdges);
 
-    return fullPaths;
+    //we need to clean up this one
+    //seed an aribitrary vertex as a start
+    std::set<VAux> visitedVerticesWithUnvisitedEdges { *boost::vertices(dagAux).first };
+
+    while (!visitedVerticesWithUnvisitedEdges.empty()) {
+        auto v = *visitedVerticesWithUnvisitedEdges.begin();
+        //travel from v, we may need to break a previous edge chain
+        if (!dagAux[v].visitedOutEdges.empty()) {
+            //we have an old edge chain here, we need to break this chain
+        }
+    }
 }
 
 }

@@ -16,6 +16,12 @@
     <Filter Include="Header Files\BoostGraphX">
       <UniqueIdentifier>{ed9c7635-ec86-4b11-9bd2-0bcd4b0b8eea}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\BoostGraphX\Public">
+      <UniqueIdentifier>{fd08018c-9227-404f-b539-39ab403ef071}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\BoostGraphX\Private">
+      <UniqueIdentifier>{57c794b8-afbb-40e9-bef2-410288020a37}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BGLTest.cpp">
@@ -26,8 +32,11 @@
     <ClInclude Include="NamedDag.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="BoostGraphX\Common.h">
-      <Filter>Header Files\BoostGraphX</Filter>
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h">
+      <Filter>Header Files\BoostGraphX\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\DirectedBidirectionalConcept.h">
+      <Filter>Header Files\BoostGraphX\Public</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
