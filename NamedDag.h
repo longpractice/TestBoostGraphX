@@ -31,14 +31,14 @@ namespace bglx {
 
 	static void printVertex(const Dag& dag, Vertex v)
 	{
-		//std::cout << "  " << dag[v].name;
+		std::cout << "  " << dag[v].name;
 	}
 
 	static void printEdge(const Dag& dag, Edge edge)
 	{
 		auto source = boost::source(edge, dag);
 		auto target = boost::target(edge, dag);
-		//std::cout << "Edge: " << dag[source].name << " -> " << dag[target].name << std::endl;
+		std::cout << "Edge: " << dag[source].name << " -> " << dag[target].name << std::endl;
 	}
 
 	static void printEdges(const Dag& dag, const std::set<Edge>& edges)
@@ -50,10 +50,10 @@ namespace bglx {
 		std::cout << "--------------------------------------------" << std::endl;
 	};
 
-	//some assumptions here have to be taken here. It is not in any docu, but for this type of
+	//Some assumptions here have to be taken here. It is not in any docu, but for this type of
 	//adjacency_list, we the VertexProperty and EdgeProperty template does not affect
 	//the vertex/edge iterators and the null vertex, we use this feasure to point one
-	using DagAuxPure = boost::adjacency_list<boost::setS, boost::setS, boost::bidirectionalS>;
+	using DagAuxPure = boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS>;
 	using VAux = DagAuxPure::vertex_descriptor;
 	using EAux = DagAuxPure::edge_descriptor;
 	using EAuxList = std::list<EAux>;
@@ -67,23 +67,24 @@ namespace bglx {
 	}
 
 	struct EAuxProp {
+		EAuxProp() = default;
 		Edge eOrigin;
-		//hack here since we could not easily put EAux here for linked list
-		//it is only type erased, but the underlying type is still a EAux
-		//not violating strict-aliasing-rule
-		EAuxListIt eWalkListIt;
+		std::shared_ptr<EAuxListIt> eWalkListIt{ nullptr };
 	};
 
 	struct VAuxProp {
+		VAuxProp() = default;
 		Vertex vOrigin;
 		std::list<EAux> unVisitedOutEdges;
 		std::list<EAux> visitedOutEdges;
-		VAuxListIt vUnfinishedListIt;
+		//we could not use EAuxListIt here, since once it is default constructed
+		//it is a "singular" iterator that we could not even assign to it
+		std::shared_ptr<VAuxListIt> vUnfinishedListIt{ nullptr };
 	};
 
 	using DagAux = boost::adjacency_list<
-		boost::setS,
-		boost::setS,
+		boost::vecS,
+		boost::vecS,
 		boost::bidirectionalS,
 		VAuxProp,
 		EAuxProp>;
@@ -105,7 +106,7 @@ namespace bglx {
 			//the visited out edge, which need to break the previous linked list
 			auto eOutVisited = *prop.visitedOutEdges.begin();
 			auto eOutVisitedIt = aux[eOutVisited].eWalkListIt;
-			oldClosedWalk.splice(eOutVisitedIt, newClosedWalk);
+			oldClosedWalk.splice(*eOutVisitedIt, newClosedWalk);
 		}
 		else {
 			//old closed walk must be empty
@@ -113,12 +114,20 @@ namespace bglx {
 		}
 	}
 
-	void discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList, EAuxList& newClosedWalk)
+	void discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList, EAuxList& oldClosedWalk)
 	{
+		EAuxList newClosedWalk;
 		auto vFirst = v;
 		if (aux[v].unVisitedOutEdges.empty()) {
-			//we could not find any new walks from this v
+			//we could not find any exit and thus no new closed walk from this v
 			return;
+		}
+		std::unique_ptr<EAuxListIt> prevVisitedVOut;
+		if (!aux[v].visitedOutEdges.empty())
+		{
+			auto firstE = aux[v].visitedOutEdges.front();
+			auto itE = aux[firstE].eWalkListIt;
+			prevVisitedVOut = std::make_unique<EAuxListIt>(*itE);
 		}
 
 		//use the first excape way
@@ -133,23 +142,34 @@ namespace bglx {
 			vProp.visitedOutEdges.emplace_back(eOut);
 
 			newClosedWalk.emplace_back(eOut);
-			aux[eOut].eWalkListIt = --newClosedWalk.end();
+			auto p = std::make_shared<EAuxListIt>(--newClosedWalk.end());
+			auto& sh = aux[eOut].eWalkListIt;
+			sh = p;
 
 			//v was partially visited before, if we have finished the last
 			bool justBecomeUnfinished = vProp.visitedOutEdges.size() == 1 && !vProp.unVisitedOutEdges.empty();
 			if (justBecomeUnfinished) {
 				unfinishedVList.emplace_back(v);
-				vProp.vUnfinishedListIt = --unfinishedVList.end();
+				vProp.vUnfinishedListIt = std::make_shared<VAuxListIt>(--unfinishedVList.end() );
 			}
 
 			//it was partially visited before and now need to be moved out
 			bool justMovedOutOfUnfinishedVList = vProp.unVisitedOutEdges.empty() && vProp.visitedOutEdges.size() > 1;
 			if (justMovedOutOfUnfinishedVList)
 			{
-				unfinishedVList.erase(vProp.vUnfinishedListIt);
+				unfinishedVList.erase(*vProp.vUnfinishedListIt);
 			}
 			v = boost::target(eOut, aux);
 		} while (v != vFirst);
+
+		if (prevVisitedVOut) {
+			//the visited out edge, which need to break the previous linked list
+			oldClosedWalk.splice(*prevVisitedVOut, newClosedWalk);
+		}
+		else {
+			//old closed walk must be empty
+			std::swap(oldClosedWalk, newClosedWalk);
+		}
 	}
 
 	//insert handle once once
@@ -169,6 +189,7 @@ namespace bglx {
 
 		void operator()(Vertex input, VAux output) const {
 			to[output].vOrigin = input;
+			to[output].vUnfinishedListIt = nullptr;
 		}
 	};
 
@@ -181,6 +202,7 @@ namespace bglx {
 
 		void operator()(Edge input, EAux output) const {
 			to[output].eOrigin = input;
+			to[output].eWalkListIt = nullptr;
 		}
 	};
 
@@ -196,36 +218,32 @@ namespace bglx {
 			}
 		}
 	}
-	DagAux makeAuxDag(Dag& dag)
+
+	void makeAuxDag(Dag& dag, DagAux& dagAux)
 	{
-		auto dagAux = DagAux{};
 		boost::copy_graph(
 			dag,
 			dagAux,
 			boost::vertex_copy(VCopier(dag, dagAux)).edge_copy(ECopier(dag, dagAux))
 		);
 		fillInAuxDagInfo(dagAux);
-		return dagAux;
 	}
 
-
-
-	std::vector<Edge> findEulerCycle_Hierholzer(Dag& dag)
+	std::vector<Edge> findEulerCycle_Hierholzer(Dag& dag, Vertex firstV)
 	{
 		//make an auxiliary dag containing additional informations
-		auto dagAux = makeAuxDag(dag);
-		
-		auto firstV = *boost::vertices(dagAux).first;
+		auto dagAux = DagAux{};
+		makeAuxDag(dag, dagAux);
 		auto nrEdges = boost::num_edges(dag);
 		VAuxList unfinishedVList;
 		EAuxList closedWalk;
 
-		expandClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
+		discoverNewClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
 
 		while (closedWalk.size() < nrEdges)
 		{
 			firstV = unfinishedVList.front();
-			expandClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
+			discoverNewClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
 		}
 
 		std::vector<Edge> edges;
