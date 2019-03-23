@@ -62,7 +62,8 @@ static void printEdges(const Dag& dag, const std::set<Edge>& edges)
 using DagAuxPure = boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS>;
 using VAux = DagAuxPure::vertex_descriptor;
 using EAux = DagAuxPure::edge_descriptor;
-using EAuxIt = DagAuxPure::edge_iterator;
+using EList = std::list<Edge>;
+using EListIt = std::list<Edge>::iterator;
 using EAuxList = std::list<EAux>;
 using VAuxList = std::list<VAux>;
 using EAuxListIt = EAuxList::iterator;
@@ -74,18 +75,18 @@ static auto nullVAux()
 }
 
 struct EAuxProp {
-    EAuxProp() = default;
+    //EAuxProp() = default;
     Edge eOrigin;
-    std::shared_ptr<EAuxListIt> eWalkListIt { nullptr };
+    std::optional<EListIt> eWalkListIt;
 };
 
 struct VAuxProp {
-    VAuxProp() = default;
+    //VAuxProp() = default;
     Vertex vOrigin;
     size_t firstUnVisitedEdgeId { 0 };
     //we could not use EAuxListIt here, since once it is default constructed
     //it is a "singular" iterator that we could not even assign to it
-    std::shared_ptr<VAuxListIt> vUnfinishedListIt { nullptr };
+    std::optional<VAuxListIt> vUnfinishedListIt;
 };
 
 using DagAux = boost::adjacency_list<
@@ -98,48 +99,49 @@ using DagAux = boost::adjacency_list<
 using VAux = DagAux::vertex_descriptor;
 using EAux = DagAux::edge_descriptor;
 
-void discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList, EAuxList& oldClosedWalk)
+//return the start edge of the new circle from v,
+//the second is true if the start edge corresponds to markEdge
+std::pair<EListIt, bool> discoverNewClosedWalk(
+    VAux v,
+    DagAux& aux,
+    VAuxList& unfinishedVList,
+    EList& oldClosedWalk,
+    std::optional<EAux> markEdge = {})
 {
-    EAuxList newClosedWalk;
+    EList newClosedWalk;
     auto vFirst = v;
     if (boost::out_degree(v, aux) == aux[v].firstUnVisitedEdgeId) {
         //we could not find any exit and thus no new closed walk from this v
-        return;
+        return { {}, false };
     }
-    std::unique_ptr<EAuxListIt> prevVisitedEOut;
+    std::unique_ptr<EListIt> prevVisitedEOut;
+    auto outEdges = boost::out_edges(v, aux);
+    auto firstUnvisitedE = *(outEdges.first + aux[v].firstUnVisitedEdgeId);
+    bool isMarked = markEdge ? firstUnvisitedE == markEdge.value() : false;
 
-	{
-		//find the first exit for current vertex
-		auto& vProp = aux[v];
-		auto outDeg = boost::out_degree(v, aux);
-		if (aux[v].firstUnVisitedEdgeId != 0) {
-			auto outEdges = boost::out_edges(v, aux);
-			const auto& firstE = *(outEdges.first + aux[v].firstUnVisitedEdgeId - 1);
-			const auto& itE = aux[firstE].eWalkListIt;
-			prevVisitedEOut = std::make_unique<EAuxListIt>(*itE);
-		}
-	}
+    if (aux[v].firstUnVisitedEdgeId != 0) {
+        const auto& visitedE = *(outEdges.first + aux[v].firstUnVisitedEdgeId - 1);
+        const auto& itVisitedE = aux[visitedE].eWalkListIt;
+        prevVisitedEOut = std::make_unique<EListIt>(*itVisitedE);
+    }
 
-
-    //use the first excape way
     do {
         //find the first exit for current vertex
         auto& vProp = aux[v];
-		auto outDeg = boost::out_degree(v, aux);
-        const auto& itEOut = boost::out_edges(v, aux).first + vProp.firstUnVisitedEdgeId;
-        const auto& eOut = *itEOut;
-
+        auto outDeg = boost::out_degree(v, aux);
+        auto itEOut = boost::out_edges(v, aux).first + vProp.firstUnVisitedEdgeId;
+        auto eOut = *itEOut;
         //this exist edge is now visited, move it from unvisited to visited
-		++vProp.firstUnVisitedEdgeId;
+        ++vProp.firstUnVisitedEdgeId;
 
-        newClosedWalk.emplace_back(eOut);
-        aux[eOut].eWalkListIt = std::make_shared<EAuxListIt>(--newClosedWalk.end());
+        newClosedWalk.emplace_back(aux[eOut].eOrigin);
+        aux[eOut].eWalkListIt = { --newClosedWalk.end() };
 
         //v was partially visited before, if we have finished the last
         bool justBecomeUnfinished = vProp.firstUnVisitedEdgeId == 1 && vProp.firstUnVisitedEdgeId != outDeg;
         if (justBecomeUnfinished) {
             unfinishedVList.emplace_back(v);
-            vProp.vUnfinishedListIt = std::make_shared<VAuxListIt>(--unfinishedVList.end());
+            vProp.vUnfinishedListIt = { --unfinishedVList.end() };
         }
 
         //it was partially visited before and now need to be moved out
@@ -150,6 +152,7 @@ void discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList, EAuxL
         v = boost::target(eOut, aux);
     } while (v != vFirst);
 
+    auto eListIt = newClosedWalk.begin();
     if (prevVisitedEOut) {
         //the visited out edge, which need to break the previous linked list
         oldClosedWalk.splice(*prevVisitedEOut, newClosedWalk);
@@ -157,6 +160,7 @@ void discoverNewClosedWalk(VAux v, DagAux& aux, VAuxList& unfinishedVList, EAuxL
         //old closed walk must be empty
         std::swap(oldClosedWalk, newClosedWalk);
     }
+    return { eListIt, isMarked };
 }
 
 struct VCopier {
@@ -169,7 +173,6 @@ struct VCopier {
     void operator()(Vertex input, VAux output) const
     {
         to[output].vOrigin = input;
-        to[output].vUnfinishedListIt = nullptr;
     }
 };
 
@@ -184,33 +187,24 @@ struct ECopier {
     void operator()(Edge input, EAux output) const
     {
         to[output].eOrigin = input;
-        to[output].eWalkListIt = nullptr;
     }
 };
 
-
-
 void makeAuxDag(Dag& dag, DagAux& dagAux)
 {
-	{
-		AutoProfiler timer{ "time copying" };
-		boost::copy_graph(
-			dag,
-			dagAux,
-			boost::vertex_copy(VCopier(dag, dagAux)).edge_copy(ECopier(dag, dagAux)));
-	}
-}
-std::vector<Edge> findEulerCycle_Hierholzer(Dag& dag, Vertex firstV, Edge firstE)
-{
-    //make an auxiliary dag containing additional informations
-    auto dagAux = DagAux {};
-    makeAuxDag(dag, dagAux);
     {
-        AutoProfiler profiler { "Time without copying" };
-        auto nrEdges = boost::num_edges(dag);
-        auto nrVertices = boost::num_vertices(dag);
+        AutoProfiler timer { "time copying" };
+        boost::copy_graph(
+            dag,
+            dagAux,
+            boost::vertex_copy(VCopier(dag, dagAux)).edge_copy(ECopier(dag, dagAux)));
+    }
+}
+std::list<Edge> findEulerCycle_Hierholzer(DagAux& dagAux, Vertex firstV, EAux eMark)
+{
+    AutoProfiler profiler { "Time without copying" };
 
-        /*
+    /*
 		boost::container::pmr::pool_options eListOptions;
 		eListOptions.max_blocks_per_chunk = nrEdges;
 		eListOptions.largest_required_pool_block = 8 *sizeof(EAux);
@@ -227,22 +221,28 @@ std::vector<Edge> findEulerCycle_Hierholzer(Dag& dag, Vertex firstV, Edge firstE
 		EAuxList closedWalk(eListAllocator);
 		*/
 
-        VAuxList unfinishedVList;
-        EAuxList closedWalk;
-        discoverNewClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
+    VAuxList unfinishedVList;
+    EList closedWalk;
+	auto eMarkedIt = closedWalk.end();
 
-        while (closedWalk.size() < nrEdges) {
-            firstV = unfinishedVList.front();
-            discoverNewClosedWalk(firstV, dagAux, unfinishedVList, closedWalk);
-        }
-
-        std::vector<Edge> edges;
-        edges.reserve(nrEdges);
-        for (const auto& eAux : closedWalk) {
-            edges.emplace_back(dagAux[eAux].eOrigin);
-        }
-
-        return edges;
+    while (closedWalk.size() < boost::num_edges(dagAux)) {
+		if (unfinishedVList.empty() || unfinishedVList.front() == firstV)
+		{
+			auto[eItAdd, ifMarked] = discoverNewClosedWalk(firstV, dagAux, unfinishedVList, closedWalk, { eMark });
+			if (ifMarked)
+			{
+				eMarkedIt = eItAdd;
+			}
+		}
+		else
+		{
+			auto v = unfinishedVList.front();
+			discoverNewClosedWalk(v, dagAux, unfinishedVList, closedWalk);
+		}
     }
+	EList closedWalkTmp;
+	closedWalkTmp.splice(closedWalkTmp.begin(), closedWalk, eMarkedIt, closedWalk.end());
+	closedWalkTmp.splice(closedWalkTmp.end(), closedWalk);
+	return closedWalkTmp;
 }
 }
