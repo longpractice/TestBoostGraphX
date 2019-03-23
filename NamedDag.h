@@ -89,21 +89,21 @@ struct VAuxProp {
     std::optional<VAuxListIt> vUnfinishedListIt;
 };
 
-using DagAux = boost::adjacency_list<
+using GAux = boost::adjacency_list<
     boost::vecS,
     boost::vecS,
     boost::directedS,
     VAuxProp,
     EAuxProp>;
 
-using VAux = DagAux::vertex_descriptor;
-using EAux = DagAux::edge_descriptor;
+using VAux = GAux::vertex_descriptor;
+using EAux = GAux::edge_descriptor;
 
 //return the start edge of the new circle from v,
 //the second is true if the start edge corresponds to markEdge
 std::pair<EListIt, bool> discoverNewClosedWalk(
     VAux v,
-    DagAux& aux,
+    GAux& aux,
     VAuxList& unfinishedVList,
     EList& oldClosedWalk,
     std::optional<EAux> markEdge = {})
@@ -164,11 +164,11 @@ std::pair<EListIt, bool> discoverNewClosedWalk(
 }
 
 struct VCopier {
-    VCopier(Dag& from, DagAux& to)
+    VCopier(Dag& from, GAux& to)
         : from(from)
         , to(to) {};
     Dag& from;
-    DagAux& to;
+    GAux& to;
 
     void operator()(Vertex input, VAux output) const
     {
@@ -177,12 +177,12 @@ struct VCopier {
 };
 
 struct ECopier {
-    ECopier(Dag& from, DagAux& to)
+    ECopier(Dag& from, GAux& to)
         : from(from)
         , to(to) {};
 
     Dag& from;
-    DagAux& to;
+    GAux& to;
 
     void operator()(Edge input, EAux output) const
     {
@@ -190,7 +190,7 @@ struct ECopier {
     }
 };
 
-void makeAuxDag(Dag& dag, DagAux& dagAux)
+void makeAuxDag(Dag& dag, GAux& dagAux)
 {
     {
         AutoProfiler timer { "time copying" };
@@ -200,7 +200,7 @@ void makeAuxDag(Dag& dag, DagAux& dagAux)
             boost::vertex_copy(VCopier(dag, dagAux)).edge_copy(ECopier(dag, dagAux)));
     }
 }
-std::list<Edge> findEulerCycle_Hierholzer(DagAux& dagAux, Vertex firstV, EAux eMark)
+std::list<Edge> findEulerCycle_Hierholzer(GAux& dagAux, Vertex firstV, EAux eMark)
 {
     AutoProfiler profiler { "Time without copying" };
 
