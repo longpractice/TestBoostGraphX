@@ -169,7 +169,7 @@
   <ItemGroup>
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h" />
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h" />
-    <ClInclude Include="EulerGraph.h" />
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h" />
     <ClInclude Include="NamedDag.h" />
     <ClInclude Include="Timer.h" />
   </ItemGroup>

@@ -41,7 +41,7 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
     </ClInclude>
-    <ClInclude Include="EulerGraph.h">
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
     </ClInclude>
   </ItemGroup>
