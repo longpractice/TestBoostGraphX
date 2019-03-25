@@ -42,6 +42,9 @@
     <ClInclude Include="Make_De_Bruijn_Euler_Digraph.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="Timer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="EulerGraphTest.cpp">
