@@ -24,19 +24,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BGLTest.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="NamedDag.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
-    </ClInclude>
-    <ClInclude Include="Timer.h">
-      <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
@@ -44,5 +36,16 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
     </ClInclude>
+    <ClInclude Include="catch.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Make_De_Bruijn_Euler_Digraph.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="EulerGraphTest.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

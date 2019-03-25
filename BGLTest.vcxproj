@@ -106,7 +106,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\boost_1_69_0;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\BoostGraphX\Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\boost_1_69_0;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\BoostGraphX\Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
@@ -146,7 +146,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\BoostGraphX\Public;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\boost_1_69_0;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\boost_1_69_0;C:\Users\Yang\Documents\Visual Studio 2017\Projects\BGLTest\BoostGraphX\Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
@@ -159,7 +159,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BGLTest.cpp">
+    <ClCompile Include="EulerGraphTest.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </PrecompiledHeaderFile>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -170,8 +170,9 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h" />
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h" />
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h" />
+    <ClInclude Include="catch.hpp" />
+    <ClInclude Include="Make_De_Bruijn_Euler_Digraph.h" />
     <ClInclude Include="NamedDag.h" />
-    <ClInclude Include="Timer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
