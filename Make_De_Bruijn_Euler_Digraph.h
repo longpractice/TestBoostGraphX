@@ -1,7 +1,7 @@
 #pragma once
 #include "NamedDag.h"
 #include <Boost/timer/timer.hpp>
-#include <BoostGraphX/EulerGraph.h>
+#include <BoostGraphX/euler_graph.h>
 #include <iostream>
 #include <catch.hpp>
 

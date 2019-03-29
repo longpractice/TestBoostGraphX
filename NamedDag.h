@@ -1,5 +1,4 @@
 #pragma once
-#include <BoostGraphX/Common.h>
 #include <boost/container/pmr/list.hpp>
 #include <boost/container/pmr/monotonic_buffer_resource.hpp>
 #include <boost/container/pmr/polymorphic_allocator.hpp>
