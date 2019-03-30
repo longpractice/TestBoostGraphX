@@ -45,9 +45,15 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\euler_graph.h">
       <Filter>Header Files\BoostGraphX</Filter>
     </ClInclude>
+    <ClInclude Include="minimum_feedback_arc_set.h">
+      <Filter>Header Files\BoostGraphX\Public</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="EulerGraphTest.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minimum_feedback_arc_set_test.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -165,6 +165,7 @@
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="minimum_feedback_arc_set_test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h" />
@@ -172,6 +173,7 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\euler_graph.h" />
     <ClInclude Include="catch.hpp" />
     <ClInclude Include="Make_De_Bruijn_Euler_Digraph.h" />
+    <ClInclude Include="minimum_feedback_arc_set.h" />
     <ClInclude Include="NamedDag.h" />
     <ClInclude Include="Timer.h" />
   </ItemGroup>
