@@ -169,7 +169,7 @@
   <ItemGroup>
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\Common.h" />
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h" />
-    <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h" />
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\euler_graph.h" />
     <ClInclude Include="catch.hpp" />
     <ClInclude Include="Make_De_Bruijn_Euler_Digraph.h" />
     <ClInclude Include="NamedDag.h" />

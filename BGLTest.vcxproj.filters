@@ -33,9 +33,6 @@
     <ClInclude Include="BoostGraphX\Public\BoostGraphX\directed_bidirectional_graph_concept.h">
       <Filter>Header Files\BoostGraphX\Public</Filter>
     </ClInclude>
-    <ClInclude Include="BoostGraphX\Public\BoostGraphX\EulerGraph.h">
-      <Filter>Header Files\BoostGraphX\Public</Filter>
-    </ClInclude>
     <ClInclude Include="catch.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -44,6 +41,9 @@
     </ClInclude>
     <ClInclude Include="Timer.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BoostGraphX\Public\BoostGraphX\euler_graph.h">
+      <Filter>Header Files\BoostGraphX</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
