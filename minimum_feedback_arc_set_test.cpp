@@ -15,7 +15,18 @@ namespace bglx::test
 		{
 			Vertex v_origin;
 			int deg_diff{};
-			std::optional<V_List_Pure_It> v_list_it;
+			//we could not put default constructed it here, since such a thing is a "singular iterator"
+			//which could not be assigned
+			//we could only have a work around to use the memory to avoid any additional memory cost
+			std::aligned_storage<sizeof(V_List_Pure_It), alignof(V_List_Pure_It)> v_list_it_storage;
+			void assign_v_list_it(V_List_Pure_It it)
+			{
+				::new ((void *)::std::addressof(v_list_it_storage)) V_List_Pure_It( it );
+			}
+			V_List_Pure_It v_list_it()
+			{
+				return *reinterpret_cast<V_List_Pure_It*>((void*)std::addressof(v_list_it_storage));
+			}
 		};
 
 		struct E_Prop
@@ -92,7 +103,7 @@ namespace bglx::test
 
 			auto& vProp = g[v];
 			vProp.deg_diff = deg_diff;
-			vProp.v_list_it = std::prev(bin.v_list.end());
+			vProp.assign_v_list_it(std::prev(bin.v_list.end()));
 		}
 
 		void init_occupied_bin_list_prev()
@@ -187,14 +198,14 @@ namespace bglx::test
 			//transfer the vertex to his new home, s1 or new bin
 			if (old_deg == 1)
 			{
-				old_bin.v_list.erase(vProp.v_list_it.value());
+				old_bin.v_list.erase(vProp.v_list_it());
 				add_to_s1(v);
 			}
 			else
 			{
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
-				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it.value());
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it());
 				if (was_new_bin_empty)
 				{
 					handle_newly_occupied_bin_upgrade_v(new_bin, old_bin);
@@ -219,14 +230,14 @@ namespace bglx::test
 			//transfer the vertex to his new home, s2 or new bin
 			if (old_deg == 1)
 			{
-				old_bin.v_list.erase(vProp.v_list_it.value());
+				old_bin.v_list.erase(vProp.v_list_it());
 				add_to_s2(v);
 			}
 			else
 			{
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
-				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it.value());
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it());
 				if (was_new_bin_empty)
 				{
 					handle_newly_occupied_bin_downgrade_v(new_bin, old_bin);
