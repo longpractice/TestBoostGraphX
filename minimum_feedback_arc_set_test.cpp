@@ -39,7 +39,7 @@ namespace bglx::test
 			Bin* next_occupied_bin;
 		};
 
-		Bin* last_occupied_bin{ nullptr };
+		Bin* last_occupied_bin{nullptr};
 
 		using Bins = std::vector<Bin>;
 
@@ -128,12 +128,12 @@ namespace bglx::test
 		void handle_emptied_bin(Bin& bin)
 		{
 			//this bin has become empty, link the two neighbors of the linked list
-			if(bin.prev_occupied_bin)
+			if (bin.prev_occupied_bin)
 			{
 				bin.prev_occupied_bin->next_occupied_bin = bin.next_occupied_bin;
 			}
 
-			if(bin.next_occupied_bin)
+			if (bin.next_occupied_bin)
 			{
 				bin.next_occupied_bin->prev_occupied_bin = bin.prev_occupied_bin;
 			}
@@ -143,33 +143,100 @@ namespace bglx::test
 			}
 		}
 
-		void handle_newly_occupied_bin(Bin& bin, Bin& next_occupied_bin)
+		void handle_newly_occupied_bin_downgrade_v(Bin& bin, Bin& next_occupied_bin)
 		{
-			
+			//From linked list A<--->B to A <---> C <---> B
+			//two tasks, 1)set the next and prev of C
+			//2) set the next of A and the prev of B
+			bin.next_occupied_bin = &next_occupied_bin;
+			bin.prev_occupied_bin = next_occupied_bin.prev_occupied_bin;
+
+			if (next_occupied_bin.prev_occupied_bin)
+			{
+				next_occupied_bin.prev_occupied_bin->next_occupied_bin = &bin;
+			}
+			next_occupied_bin.prev_occupied_bin = &bin;
 		}
+
+		void handle_newly_occupied_bin_upgrade_v(Bin& bin, Bin& prev_occupied_bin)
+		{
+			bin.next_occupied_bin = prev_occupied_bin.next_occupied_bin;
+			bin.prev_occupied_bin = &prev_occupied_bin;
+			if (prev_occupied_bin.next_occupied_bin)
+			{
+				prev_occupied_bin.next_occupied_bin->prev_occupied_bin = &bin;
+			}
+			else
+			{
+				last_occupied_bin = &bin;
+			}
+			prev_occupied_bin.next_occupied_bin = &bin;
+		}
+
 
 		//if return tree, the user got to remove the vertex from graph also
 		bool decrease_in_degree_on_v(V v)
 		{
 			auto& vProp = g[v];
-			if(boost::in_degree(v, g) == 1)
+			auto old_deg_diff = vProp.deg_diff;
+			auto new_deg_diff = old_deg_diff + 1;
+			auto old_deg = boost::in_degree(v, g);
+			auto old_bin = get_bin(vProp.deg_diff);
+
+			//becomes a source
+			//transfer the vertex to his new home, s1 or new bin
+			if (old_deg == 1)
 			{
-				//becomes a source
-				auto& bin = get_bin(vProp.deg_diff);
-				//we no longer need this v
-				bin.v_list.erase(vProp.v_list_it.value());
-				handle_emptied_bin(bin);
+				old_bin.v_list.erase(vProp.v_list_it.value());
+				add_to_s1(v);
 			}
 			else
 			{
-				auto diff = vProp.deg_diff;
-				auto diff_new = diff - 1;
-				auto &bin = 
-
+				auto& new_bin = get_bin(new_deg_diff);
+				bool was_new_bin_empty = new_bin.v_list.empty();
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it.value());
+				if (was_new_bin_empty)
+				{
+					handle_newly_occupied_bin_upgrade_v(new_bin, old_bin);
+				}
 			}
-
+			if (old_bin.v_list.empty())
+			{
+				handle_emptied_bin(old_bin);
+			}
+			return old_deg == 1;
 		}
 
+		bool decrease_out_degree_on_v(V v)
+		{
+			auto& vProp = g[v];
+			auto old_deg_diff = vProp.deg_diff;
+			auto new_deg_diff = old_deg_diff - 1;
+			auto old_deg = boost::out_degree(v, g);
+			auto old_bin = get_bin(vProp.deg_diff);
 
+			//becomes a source
+			//transfer the vertex to his new home, s2 or new bin
+			if (old_deg == 1)
+			{
+				old_bin.v_list.erase(vProp.v_list_it.value());
+				add_to_s2(v);
+			}
+			else
+			{
+				auto& new_bin = get_bin(new_deg_diff);
+				bool was_new_bin_empty = new_bin.v_list.empty();
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it.value());
+				if (was_new_bin_empty)
+				{
+					handle_newly_occupied_bin_downgrade_v(new_bin, old_bin);
+				}
+			}
+			if (old_bin.v_list.empty())
+			{
+				handle_emptied_bin(old_bin);
+			}
+			return old_deg == 1;
+		}
 	};
 }
