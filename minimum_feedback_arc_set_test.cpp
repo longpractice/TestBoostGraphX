@@ -3,6 +3,11 @@
 #include <boost/graph/copy.hpp>
 #include <stack>
 #include "catch.hpp"
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/erdos_renyi_generator.hpp>
+#include <boost/random/linear_congruential.hpp>
+#include "Timer.h"
+#define BIN_DEBUG
 
 namespace bglx::test
 {
@@ -19,6 +24,7 @@ namespace bglx::test
 			Vertex v_origin;
 			V_List_Pure_It v_list_it;
 			int deg_diff{};
+			bool marked{false};
 		};
 
 		struct E_Prop
@@ -40,6 +46,9 @@ namespace bglx::test
 			V_List v_list;
 			Bin* p_prev_occupied_bin;
 			Bin* p_next_occupied_bin;
+#ifdef BIN_DEBUG
+			int deg_diff;
+#endif
 		};
 
 		Bin* p_last_occupied_bin{nullptr};
@@ -151,6 +160,11 @@ namespace bglx::test
 			max_out_deg = max_out_degree;
 			max_in_deg = max_in_degree;
 			bins.resize(max_in_deg + max_in_deg + 1);
+
+#ifdef BIN_DEBUG
+			for (int iBin = 0; iBin < bins.size(); ++iBin)
+				bins[iBin].deg_diff = iBin - max_in_deg;
+#endif
 			for (auto v : boost::make_iterator_range(boost::vertices(g)))
 			{
 				init_v_to_bin(v);
@@ -158,15 +172,30 @@ namespace bglx::test
 
 			init_occupied_bin_list_prev();
 			init_occupied_bin_list_next();
+
+			auto totalNrVerticesInBins = 0;
+			for (const auto& bin : bins)
+			{
+				totalNrVerticesInBins += bin.v_list.size();
+				for (auto it = bin.v_list.begin(); it != bin.v_list.end(); ++it)
+				{
+					auto& v_prop = g[*it];
+					assert(v_prop.v_list_it == it);
+				}
+			}
+			assert(
+				totalNrVerticesInBins + unprocessed_sources.size() + unprocessed_sinks.size()
+				== boost::num_vertices(g)
+			);
 		}
 
 		void process_sources()
 		{
-			while(!unprocessed_sources.empty())
+			while (!unprocessed_sources.empty())
 			{
 				auto src = unprocessed_sources.front();
 				unprocessed_sources.pop();
-				for(auto tgt : boost::make_iterator_range(boost::adjacent_vertices(src, g)))
+				for (auto tgt : boost::make_iterator_range(boost::adjacent_vertices(src, g)))
 				{
 					decrease_in_degree_on_v(tgt);
 				}
@@ -178,11 +207,11 @@ namespace bglx::test
 
 		void process_sinks()
 		{
-			while(!unprocessed_sinks.empty())
+			while (!unprocessed_sinks.empty())
 			{
 				auto tgt = unprocessed_sinks.top();
 				unprocessed_sinks.pop();
-				for(auto src : boost::make_iterator_range(boost::inv_adjacent_vertices(tgt, g)))
+				for (auto src : boost::make_iterator_range(boost::inv_adjacent_vertices(tgt, g)))
 				{
 					decrease_out_degree_on_v(src);
 				}
@@ -201,7 +230,7 @@ namespace bglx::test
 			{
 				decrease_in_degree_on_v(tgt);
 			}
-			for(const auto& e : boost::make_iterator_range(boost::in_edges(v, g)))
+			for (const auto& e : boost::make_iterator_range(boost::in_edges(v, g)))
 			{
 				//these are the feedback arcs
 				feedback_edges_res.emplace_back(g[e].e_origin);
@@ -221,20 +250,20 @@ namespace bglx::test
 
 		void process()
 		{
-			if(!p_last_occupied_bin)
+			if (!p_last_occupied_bin)
 			{
 				//empty graph
 				return;
 			}
 
-			while(boost::num_vertices(g) != 0)
+			while (boost::num_vertices(g) != 0)
 			{
-				while(!(unprocessed_sources.empty() && unprocessed_sinks.empty()))
+				while (!(unprocessed_sources.empty() && unprocessed_sinks.empty()))
 				{
 					process_sources();
 					process_sinks();
 				}
-				if(p_last_occupied_bin)
+				if (p_last_occupied_bin)
 				{
 					auto v = p_last_occupied_bin->v_list.back();
 					process_max_delta_vertex(v);
@@ -298,6 +327,9 @@ namespace bglx::test
 			// 1) set the next and prev of C
 			// 2) set the next of A and the prev of B
 			//
+			//the new one was in chain since it might be just emptied but not yet removed from the chain
+			if (next_occupied_bin.p_prev_occupied_bin == &bin)
+				return;
 			bin.p_next_occupied_bin = &next_occupied_bin;
 			bin.p_prev_occupied_bin = next_occupied_bin.p_prev_occupied_bin;
 
@@ -310,6 +342,9 @@ namespace bglx::test
 
 		void handle_newly_occupied_bin_upgrade_v(Bin& bin, Bin& prev_occupied_bin)
 		{
+			//the new one was in chain since it might be just emptied but not yet removed from the chain
+			if (prev_occupied_bin.p_next_occupied_bin == &bin)
+				return;
 			bin.p_next_occupied_bin = prev_occupied_bin.p_next_occupied_bin;
 			bin.p_prev_occupied_bin = &prev_occupied_bin;
 			if (prev_occupied_bin.p_next_occupied_bin)
@@ -329,12 +364,10 @@ namespace bglx::test
 		{
 			auto& v_prop = g[v];
 			auto old_deg_diff = v_prop.deg_diff;
-			auto new_deg_diff = old_deg_diff + 1;
-			v_prop.deg_diff = new_deg_diff;
 			auto old_in_deg = boost::in_degree(v, g);
 			auto old_out_deg = boost::out_degree(v, g);
 
-			if(old_out_deg == 0)
+			if (old_out_deg == 0)
 			{
 				//treat as sinks
 				return false;
@@ -345,11 +378,17 @@ namespace bglx::test
 			if (old_in_deg == 1)
 			{
 				//becomes a source
-				old_bin.v_list.erase(v_prop.v_list_it);
-				unprocessed_sources.push(v);
+				if (v_prop.v_list_it != old_bin.v_list.end())
+				{
+					old_bin.v_list.erase(v_prop.v_list_it);
+					v_prop.v_list_it = old_bin.v_list.end();
+					unprocessed_sources.push(v);
+				}
 			}
 			else
 			{
+				auto new_deg_diff = old_deg_diff + 1;
+				v_prop.deg_diff = new_deg_diff;
 				//upgrade to another bin
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
@@ -373,20 +412,32 @@ namespace bglx::test
 		{
 			auto& v_prop = g[v];
 			auto old_deg_diff = v_prop.deg_diff;
-			auto new_deg_diff = old_deg_diff - 1;
-			v_prop.deg_diff = new_deg_diff;
-			auto old_deg = boost::out_degree(v, g);
+			auto old_out_deg = boost::out_degree(v, g);
+			auto old_in_deg = boost::in_degree(v, g);
+
+			if (old_out_deg > 0 && old_in_deg == 0)
+			{
+				//must be classified as a source before
+				return false;
+			}
+
 			auto& old_bin = get_bin(old_deg_diff);
 
 			//transfer the vertex to his new home, s2 or new bin
-			if (old_deg == 1)
+			if (old_out_deg == 1)
 			{
 				//becomes a sink
-				old_bin.v_list.erase(v_prop.v_list_it);
-				unprocessed_sinks.push(v);
+				if (v_prop.v_list_it != old_bin.v_list.end())
+				{
+					old_bin.v_list.erase(v_prop.v_list_it);
+					v_prop.v_list_it = old_bin.v_list.end();
+					unprocessed_sinks.push(v);
+				}
 			}
 			else
 			{
+				auto new_deg_diff = old_deg_diff - 1;
+				v_prop.deg_diff = new_deg_diff;
 				//downgrade the vertex to lower bin
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
@@ -400,13 +451,19 @@ namespace bglx::test
 			{
 				handle_emptied_bin(old_bin);
 			}
-			return old_deg == 1;
+			return old_out_deg == 1;
 		}
 	};
 
+	typedef boost::erdos_renyi_iterator<boost::minstd_rand, Dag> ERGen;
 	TEST_CASE("")
 	{
-		Dag g;
+		boost::minstd_rand gen;
+		// Create graph with 100 nodes and edges with probability 0.05
+		Dag g(ERGen(gen, 325557, 0.00003034467), ERGen(), 100);
+
+		//Dag g;
+		/*
 		for(int i = 0; i < 8; ++i)
 		{
 			boost::add_vertex(g);
@@ -427,10 +484,17 @@ namespace bglx::test
 		boost::add_edge(5, 0, g);
 		boost::add_edge(7, 2, g);
 		boost::add_edge(4, 1, g);
-
-		
-		G_Eades solver;
-		solver.init(g);
-		solver.process();
+*/
+		auto nrEdges = boost::num_edges(g);
+		auto nrVertices = boost::num_vertices(g);
+		std::cout << "Nr edges " << nrEdges << std::endl;
+		std::cout << "Nr vertices" << nrVertices << std::endl;
+		{
+			AutoProfiler timer("Time taken.");
+			G_Eades solver;
+			solver.init(g);
+			solver.process();
+			std::cout << "Nr feedback edges: " << solver.feedback_edges_res.size() << std::endl;
+		}
 	}
 }
