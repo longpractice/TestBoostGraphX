@@ -7,7 +7,6 @@
 #include <boost/graph/erdos_renyi_generator.hpp>
 #include <boost/random/linear_congruential.hpp>
 #include "Timer.h"
-#define BIN_DEBUG
 
 namespace bglx::test
 {
@@ -24,7 +23,6 @@ namespace bglx::test
 			Vertex v_origin;
 			V_List_Pure_It v_list_it;
 			int deg_diff{};
-			bool marked{false};
 		};
 
 		struct E_Prop
@@ -46,9 +44,6 @@ namespace bglx::test
 			V_List v_list;
 			Bin* p_prev_occupied_bin;
 			Bin* p_next_occupied_bin;
-#ifdef BIN_DEBUG
-			int deg_diff;
-#endif
 		};
 
 		Bin* p_last_occupied_bin{nullptr};
@@ -161,10 +156,6 @@ namespace bglx::test
 			max_in_deg = max_in_degree;
 			bins.resize(max_in_deg + max_in_deg + 1);
 
-#ifdef BIN_DEBUG
-			for (int iBin = 0; iBin < bins.size(); ++iBin)
-				bins[iBin].deg_diff = iBin - max_in_deg;
-#endif
 			for (auto v : boost::make_iterator_range(boost::vertices(g)))
 			{
 				init_v_to_bin(v);
