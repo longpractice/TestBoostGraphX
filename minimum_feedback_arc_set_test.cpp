@@ -2,6 +2,7 @@
 #include <optional>
 #include <boost/graph/copy.hpp>
 #include <stack>
+#include "catch.hpp"
 
 namespace bglx::test
 {
@@ -16,25 +17,7 @@ namespace bglx::test
 		struct V_Prop
 		{
 			Vertex v_origin;
-
-			//
-			// we could not put default constructed iterator here, since such a thing is a "singular iterator"
-			// which could not be assigned
-			// we could only have a work around to use the memory to avoid any additional memory cost
-			// this is indeed just a pointer size
-			//
-			std::aligned_storage<sizeof(V_List_Pure_It), alignof(V_List_Pure_It)> v_list_it_storage;
-
-			void assign_v_list_it(V_List_Pure_It it)
-			{
-				::new((void *)::std::addressof(v_list_it_storage)) V_List_Pure_It(std::move(it));
-			}
-
-			V_List_Pure_It& v_list_it()
-			{
-				return *reinterpret_cast<V_List_Pure_It*>((void*)std::addressof(v_list_it_storage));
-			}
-
+			V_List_Pure_It v_list_it;
 			int deg_diff{};
 		};
 
@@ -103,7 +86,7 @@ namespace bglx::test
 
 				auto& vProp = g[v];
 				vProp.deg_diff = deg_diff;
-				vProp.assign_v_list_it(std::prev(bin.v_list.end()));
+				vProp.v_list_it = std::prev(bin.v_list.end());
 			}
 		}
 
@@ -167,7 +150,7 @@ namespace bglx::test
 			}
 			max_out_deg = max_out_degree;
 			max_in_deg = max_in_degree;
-			bins.resize(max_in_deg + max_in_deg);
+			bins.resize(max_in_deg + max_in_deg + 1);
 			for (auto v : boost::make_iterator_range(boost::vertices(g)))
 			{
 				init_v_to_bin(v);
@@ -181,7 +164,7 @@ namespace bglx::test
 		{
 			while(!unprocessed_sources.empty())
 			{
-				auto src = unprocessed_sources.back();
+				auto src = unprocessed_sources.front();
 				unprocessed_sources.pop();
 				for(auto tgt : boost::make_iterator_range(boost::adjacent_vertices(src, g)))
 				{
@@ -213,16 +196,25 @@ namespace bglx::test
 		{
 			auto deg_diff = g[v].deg_diff;
 			auto& bin = get_bin(deg_diff);
-			bin.v_list.erase(g[v].v_list_it());
+			bin.v_list.erase(g[v].v_list_it);
 			for (auto tgt : boost::make_iterator_range(boost::adjacent_vertices(v, g)))
 			{
 				decrease_in_degree_on_v(tgt);
 			}
-			for (auto src : boost::make_iterator_range(boost::inv_adjacent_vertices(v, g)))
+			for(const auto& e : boost::make_iterator_range(boost::in_edges(v, g)))
 			{
+				//these are the feedback arcs
+				feedback_edges_res.emplace_back(g[e].e_origin);
+				auto src = boost::source(e, g);
 				decrease_out_degree_on_v(src);
 			}
 			add_to_s1(v);
+
+			if (bin.v_list.empty())
+			{
+				handle_emptied_bin(bin);
+			}
+
 			boost::clear_vertex(v, g);
 			boost::remove_vertex(v, g);
 		}
@@ -242,7 +234,7 @@ namespace bglx::test
 					process_sources();
 					process_sinks();
 				}
-				if(!p_last_occupied_bin)
+				if(p_last_occupied_bin)
 				{
 					auto v = p_last_occupied_bin->v_list.back();
 					process_max_delta_vertex(v);
@@ -299,6 +291,7 @@ namespace bglx::test
 		//this is due to the one of the in-edges is removed
 		void handle_newly_occupied_bin_downgrade_v(Bin& bin, Bin& next_occupied_bin)
 		{
+			//
 			// From linked list A<--->B to A <---> C <---> B
 			// Two tasks:
 			//
@@ -334,17 +327,25 @@ namespace bglx::test
 		//if return true, the caller needs to remove the vertex from graph also
 		bool decrease_in_degree_on_v(V v)
 		{
-			auto& vProp = g[v];
-			auto old_deg_diff = vProp.deg_diff;
+			auto& v_prop = g[v];
+			auto old_deg_diff = v_prop.deg_diff;
 			auto new_deg_diff = old_deg_diff + 1;
-			auto old_deg = boost::in_degree(v, g);
-			auto& old_bin = get_bin(vProp.deg_diff);
+			v_prop.deg_diff = new_deg_diff;
+			auto old_in_deg = boost::in_degree(v, g);
+			auto old_out_deg = boost::out_degree(v, g);
 
+			if(old_out_deg == 0)
+			{
+				//treat as sinks
+				return false;
+			}
+
+			auto& old_bin = get_bin(old_deg_diff);
 			//transfer the vertex to his new home, s1 or new bin
-			if (old_deg == 1)
+			if (old_in_deg == 1)
 			{
 				//becomes a source
-				old_bin.v_list.erase(vProp.v_list_it());
+				old_bin.v_list.erase(v_prop.v_list_it);
 				unprocessed_sources.push(v);
 			}
 			else
@@ -353,7 +354,7 @@ namespace bglx::test
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
 				//splice from old bin to new bin, which maintains the iterator validation
-				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it());
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, v_prop.v_list_it);
 				if (was_new_bin_empty)
 				{
 					handle_newly_occupied_bin_upgrade_v(new_bin, old_bin);
@@ -364,23 +365,24 @@ namespace bglx::test
 				handle_emptied_bin(old_bin);
 			}
 
-			return old_deg == 1;
+			return old_in_deg == 1;
 		}
 
 		//if return true, the caller need to remove the vertex from the graph
 		bool decrease_out_degree_on_v(V v)
 		{
-			auto& vProp = g[v];
-			auto old_deg_diff = vProp.deg_diff;
+			auto& v_prop = g[v];
+			auto old_deg_diff = v_prop.deg_diff;
 			auto new_deg_diff = old_deg_diff - 1;
+			v_prop.deg_diff = new_deg_diff;
 			auto old_deg = boost::out_degree(v, g);
-			auto& old_bin = get_bin(vProp.deg_diff);
+			auto& old_bin = get_bin(old_deg_diff);
 
 			//transfer the vertex to his new home, s2 or new bin
 			if (old_deg == 1)
 			{
 				//becomes a sink
-				old_bin.v_list.erase(vProp.v_list_it());
+				old_bin.v_list.erase(v_prop.v_list_it);
 				unprocessed_sinks.push(v);
 			}
 			else
@@ -388,7 +390,7 @@ namespace bglx::test
 				//downgrade the vertex to lower bin
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
-				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, vProp.v_list_it());
+				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, v_prop.v_list_it);
 				if (was_new_bin_empty)
 				{
 					handle_newly_occupied_bin_downgrade_v(new_bin, old_bin);
@@ -401,4 +403,34 @@ namespace bglx::test
 			return old_deg == 1;
 		}
 	};
+
+	TEST_CASE("")
+	{
+		Dag g;
+		for(int i = 0; i < 8; ++i)
+		{
+			boost::add_vertex(g);
+		}
+		boost::add_edge(0, 3, g);
+
+		boost::add_edge(1, 3, g);
+		boost::add_edge(1, 4, g);
+
+		boost::add_edge(2, 4, g);
+
+		boost::add_edge(3, 5, g);
+		boost::add_edge(3, 6, g);
+		boost::add_edge(3, 7, g);
+
+		boost::add_edge(4, 6, g);
+
+		boost::add_edge(5, 0, g);
+		boost::add_edge(7, 2, g);
+		boost::add_edge(4, 1, g);
+
+		
+		G_Eades solver;
+		solver.init(g);
+		solver.process();
+	}
 }
