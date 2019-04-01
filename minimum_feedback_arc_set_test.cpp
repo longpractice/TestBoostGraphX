@@ -13,21 +13,21 @@ namespace bglx::test
 	struct G_Eades
 	{
 		//just to break the dependency cycle
-		using G_Pure = boost::adjacency_list<boost::listS, boost::listS, boost::directedS>;
+		using G_Pure = boost::adjacency_list<boost::listS, boost::vecS, boost::directedS>;
 
 		using V_Pure = G_Pure::vertex_descriptor;
 		using E_Pure = G_Pure::edge_descriptor;
 
 		using V_List_Pure_It = std::list<V_Pure>::iterator;
-		using In_Edge_List = std::list<size_t>;
-		using In_Edge_List_It = In_Edge_List::iterator;
+		using In_Edges = std::vector<size_t>;
+		using In_Edge_List_It = In_Edges::iterator;
 
 		struct V_Prop
 		{
 			Vertex v_origin;
 			V_List_Pure_It v_list_it;
 			int deg_diff{};
-			In_Edge_List in_edge_list;
+			In_Edges in_edges;
 		};
 
 		struct E_Prop
@@ -38,7 +38,7 @@ namespace bglx::test
 
 		using G = boost::adjacency_list<
 			boost::listS,
-			boost::listS,
+			boost::vecS,
 			boost::directedS,
 			V_Prop,
 			E_Prop
@@ -53,9 +53,9 @@ namespace bglx::test
 
 		struct Edge_Info
 		{
-			In_Edge_List_It in_edge_list_it;
+			size_t in_edge_id;
 			G::out_edge_iterator out_edge_it_boost;
-			E edge;
+			//E edge;
 		};
 
 		std::vector<Edge_Info> edges;
@@ -89,7 +89,19 @@ namespace bglx::test
 		size_t in_degree(V v)
 		{
 			const auto& v_prop = g[v];
-			return v_prop.in_edge_list.size();
+			return v_prop.in_edges.size();
+		}
+
+		void remove_in_edge(V v, size_t in_edge_id)
+		{
+			auto& in_edges = g[v].in_edges;
+			std::iter_swap(in_edges.begin() + in_edge_id, in_edges.end() - 1);
+			in_edges.pop_back();
+			if(in_edge_id + 1 != in_edges.size())
+			{
+				auto end_e_id = in_edges[in_edge_id];
+				edges[end_e_id].in_edge_id = in_edge_id;
+			}
 		}
 
 		void clear_vertex(V v)
@@ -103,13 +115,14 @@ namespace bglx::test
 				auto e_id = e_prop.edge_id;
 				const auto& e_info = edges[e_id];
 				auto tgt = boost::target(e, g);
-				g[tgt].in_edge_list.erase(e_info.in_edge_list_it);
+				remove_in_edge(tgt, e_info.in_edge_id);
+				//g[tgt].in_edges.erase(e_info.in_edge_id);
 				//boost::remove_edge(e_it, g);
 			}
 			boost::clear_out_edges(v, g);
 
 			//handle in edges differently
-			for(auto e_id : g[v].in_edge_list)
+			for(auto e_id : g[v].in_edges)
 			{
 				boost::remove_edge(edges[e_id].out_edge_it_boost, g);
 			}
@@ -211,9 +224,9 @@ namespace bglx::test
 					const auto& e = *boost_e_it;
 					auto e_id = edges.size();
 					auto tgt = boost::target(e, g);
-					g[tgt].in_edge_list.emplace_back(e_id);
-					auto e_it = std::prev(g[tgt].in_edge_list.end());
-					edges.emplace_back(Edge_Info{ e_it, boost_e_it, e });
+					g[tgt].in_edges.emplace_back(e_id);
+					auto e_it = g[tgt].in_edges.size() - 1;
+					edges.emplace_back(Edge_Info{ e_it, boost_e_it });
 					g[e].edge_id = e_id;
 				}
 			}
@@ -268,9 +281,9 @@ namespace bglx::test
 				auto tgt = unprocessed_sinks.top();
 				unprocessed_sinks.pop();
 
-				for (auto e_id : g[tgt].in_edge_list)
+				for (auto e_id : g[tgt].in_edges)
 				{
-					decrease_out_degree_on_v(boost::source(edges[e_id].edge, g));
+					decrease_out_degree_on_v(boost::source(*edges[e_id].out_edge_it_boost, g));
 				}
 				add_to_s2(tgt);
 				clear_vertex(tgt);
@@ -289,9 +302,9 @@ namespace bglx::test
 			}
 
 
-			for (auto e_id : g[v].in_edge_list)
+			for (auto e_id : g[v].in_edges)
 			{
-				auto src = boost::source(edges[e_id].edge, g);
+				auto src = boost::source(*edges[e_id].out_edge_it_boost, g);
 				feedback_edges_res.emplace_back(std::pair<Vertex, Vertex>{g[src].v_origin, g[v].v_origin});
 				decrease_out_degree_on_v(src);
 			}
@@ -341,7 +354,7 @@ namespace bglx::test
 		}
 
 
-		int get_bin_id(int deg_diff)
+		int get_bin_id(int deg_diff) const
 		{
 			return deg_diff + max_in_deg;
 		}
@@ -396,7 +409,7 @@ namespace bglx::test
 			// 1) set the next and prev of C
 			// 2) set the next of A and the prev of B
 			//
-			//the new one was in chain since it might be just emptied but not yet removed from the chain
+			// the new one was in chain since it might be just emptied but not yet removed from the chain
 			if (next_occupied_bin.p_prev_occupied_bin == &bin)
 				return;
 			bin.p_next_occupied_bin = &next_occupied_bin;
@@ -462,7 +475,7 @@ namespace bglx::test
 				auto& new_bin = get_bin(new_deg_diff);
 				bool was_new_bin_empty = new_bin.v_list.empty();
 				//splice from old bin to new bin, which maintains the iterator validation
-				new_bin.v_list.splice(new_bin.v_list.end(), old_bin.v_list, v_prop.v_list_it);
+				new_bin.v_list.splice(new_bin.v_list.begin(), old_bin.v_list, v_prop.v_list_it);
 				if (was_new_bin_empty)
 				{
 					handle_newly_occupied_bin_upgrade_v(new_bin, old_bin);
