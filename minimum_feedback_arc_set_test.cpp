@@ -13,14 +13,13 @@ namespace bglx::test
 	struct G_Eades
 	{
 		//just to break the dependency cycle
-		using G_Pure = boost::adjacency_list<boost::listS, boost::vecS, boost::directedS>;
+		using G_Pure = boost::adjacency_list<boost::listS, boost::listS, boost::directedS>;
 
 		using V_Pure = G_Pure::vertex_descriptor;
 		using E_Pure = G_Pure::edge_descriptor;
 
 		using V_List_Pure_It = std::list<V_Pure>::iterator;
 		using In_Edges = std::vector<size_t>;
-		using In_Edge_List_It = In_Edges::iterator;
 
 		struct V_Prop
 		{
@@ -38,7 +37,7 @@ namespace bglx::test
 
 		using G = boost::adjacency_list<
 			boost::listS,
-			boost::vecS,
+			boost::listS,
 			boost::directedS,
 			V_Prop,
 			E_Prop
@@ -86,6 +85,7 @@ namespace bglx::test
 		std::stack<V> unprocessed_sinks;
 
 		E_Res_List feedback_edges_res;
+
 		size_t in_degree(V v)
 		{
 			const auto& v_prop = g[v];
@@ -97,7 +97,7 @@ namespace bglx::test
 			auto& in_edges = g[v].in_edges;
 			std::iter_swap(in_edges.begin() + in_edge_id, in_edges.end() - 1);
 			in_edges.pop_back();
-			if(in_edge_id + 1 != in_edges.size())
+			if (in_edge_id + 1 != in_edges.size())
 			{
 				auto end_e_id = in_edges[in_edge_id];
 				edges[end_e_id].in_edge_id = in_edge_id;
@@ -108,7 +108,7 @@ namespace bglx::test
 		{
 			auto out_edges = boost::out_edges(v, g);
 
-			for(auto e_it = out_edges.first; e_it != out_edges.second; ++e_it)
+			for (auto e_it = out_edges.first; e_it != out_edges.second; ++e_it)
 			{
 				const auto& e = *e_it;
 				const auto& e_prop = g[e];
@@ -122,7 +122,7 @@ namespace bglx::test
 			boost::clear_out_edges(v, g);
 
 			//handle in edges differently
-			for(auto e_id : g[v].in_edges)
+			for (auto e_id : g[v].in_edges)
 			{
 				boost::remove_edge(edges[e_id].out_edge_it_boost, g);
 			}
@@ -199,9 +199,7 @@ namespace bglx::test
 			};
 
 			auto e_copier = [&](const Edge& e_origin, const E& e)
-			{
-
-			};
+			{ };
 
 			boost::copy_graph(g_origin, g, boost::vertex_copy(v_copier).edge_copy(e_copier));
 
@@ -219,14 +217,14 @@ namespace bglx::test
 				}
 
 				auto out_edges = boost::out_edges(v, g);
-				for(auto boost_e_it = out_edges.first; boost_e_it != out_edges.second; ++boost_e_it)
+				for (auto boost_e_it = out_edges.first; boost_e_it != out_edges.second; ++boost_e_it)
 				{
 					const auto& e = *boost_e_it;
 					auto e_id = edges.size();
 					auto tgt = boost::target(e, g);
 					g[tgt].in_edges.emplace_back(e_id);
 					auto e_it = g[tgt].in_edges.size() - 1;
-					edges.emplace_back(Edge_Info{ e_it, boost_e_it });
+					edges.emplace_back(Edge_Info{e_it, boost_e_it});
 					g[e].edge_id = e_id;
 				}
 			}
@@ -351,6 +349,7 @@ namespace bglx::test
 					process_max_delta_vertex(v);
 				}
 			}
+			s1.splice(s1.end(), s2);
 		}
 
 
@@ -572,12 +571,55 @@ namespace bglx::test
 		auto nrVertices = boost::num_vertices(g);
 		std::cout << "Nr edges " << nrEdges << std::endl;
 		std::cout << "Nr vertices" << nrVertices << std::endl;
+		G_Eades solver;
 		{
 			AutoProfiler timer("Time taken.");
-			G_Eades solver;
 			solver.init(g);
 			solver.process();
 			std::cout << "Nr feedback edges: " << solver.feedback_edges_res.size() << std::endl;
+		}
+
+		REQUIRE(solver.s1.size() == nrVertices);
+		std::unordered_map<Vertex, int> vertexOrder;
+		int iV = 0;
+		for (auto v : solver.s1)
+		{
+			if (vertexOrder.find(v) != vertexOrder.end())
+			{
+				throw std::exception("Error. Dup v.");
+			}
+			vertexOrder[v] = iV++;
+		}
+
+		auto nrFeedbackEdges = solver.feedback_edges_res.size();
+		REQUIRE(nrFeedbackEdges <= nrEdges / 2 - nrVertices / 6);
+		std::set<std::pair<Vertex, Vertex>> feedback_edges;
+		for (auto [v1, v2] : solver.feedback_edges_res)
+		{
+			if (vertexOrder.at(v1) <= vertexOrder.at(v2))
+			{
+				throw std::exception("Not feedback.");
+			}
+			auto [it, ok] = feedback_edges.emplace(std::pair<Vertex, Vertex>{v1, v2});
+			if (!ok)
+			{
+				throw std::exception("Feedback arc dup.");
+			}
+		}
+
+		
+		for (auto e : boost::make_iterator_range(boost::edges(g)))
+		{
+			auto src = boost::source(e, g);
+			auto dst = boost::target(e, g);
+			//if it is not feedback
+			if (feedback_edges.find(std::pair<Vertex, Vertex>{src, dst}) == feedback_edges.end())
+			{
+				if (!(vertexOrder.at(src) < vertexOrder.at(dst)))
+				{
+					throw std::exception("Feedback edge not listed!");
+				}
+			}
 		}
 	}
 }
