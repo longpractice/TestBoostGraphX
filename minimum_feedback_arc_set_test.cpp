@@ -95,7 +95,7 @@ namespace bglx::test
 		void remove_in_edge(V v, size_t in_edge_id)
 		{
 			auto& in_edges = g[v].in_edges;
-			std::iter_swap(in_edges.begin() + in_edge_id, in_edges.end() - 1);
+			in_edges[in_edge_id] = in_edges.back();
 			in_edges.pop_back();
 			if (in_edge_id + 1 != in_edges.size())
 			{
@@ -592,7 +592,8 @@ namespace bglx::test
 		}
 
 		auto nrFeedbackEdges = solver.feedback_edges_res.size();
-		REQUIRE(nrFeedbackEdges <= nrEdges / 2 - nrVertices / 6);
+		bool ifMatchHeuristicWorstCase = nrFeedbackEdges <= nrEdges / 2 - nrVertices / 6;
+		REQUIRE(ifMatchHeuristicWorstCase);
 		std::set<std::pair<Vertex, Vertex>> feedback_edges;
 		for (auto [v1, v2] : solver.feedback_edges_res)
 		{
