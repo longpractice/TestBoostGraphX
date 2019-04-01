@@ -13,31 +13,52 @@ namespace bglx::test
 	struct G_Eades
 	{
 		//just to break the dependency cycle
-		using G_Pure = boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS>;
+		using G_Pure = boost::adjacency_list<boost::listS, boost::listS, boost::directedS>;
 
 		using V_Pure = G_Pure::vertex_descriptor;
+		using E_Pure = G_Pure::edge_descriptor;
+
 		using V_List_Pure_It = std::list<V_Pure>::iterator;
+		using In_Edge_List = std::list<size_t>;
+		using In_Edge_List_It = In_Edge_List::iterator;
 
 		struct V_Prop
 		{
 			Vertex v_origin;
 			V_List_Pure_It v_list_it;
 			int deg_diff{};
+			In_Edge_List in_edge_list;
 		};
 
 		struct E_Prop
 		{
-			Edge e_origin;
+			size_t edge_id;
 		};
 
-		using G = boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, V_Prop, E_Prop>;
+
+		using G = boost::adjacency_list<
+			boost::listS,
+			boost::listS,
+			boost::directedS,
+			V_Prop,
+			E_Prop
+		>;
 
 		using V = G::vertex_descriptor;
 		using E = G::edge_descriptor;
 
 		using V_List = std::list<V>;
 		using V_Res_List = std::list<Vertex>;
-		using E_Res_List = std::list<Edge>;
+		using E_Res_List = std::list<std::pair<Vertex, Vertex>>;
+
+		struct Edge_Info
+		{
+			In_Edge_List_It in_edge_list_it;
+			G::out_edge_iterator out_edge_it_boost;
+			E edge;
+		};
+
+		std::vector<Edge_Info> edges;
 
 		struct Bin
 		{
@@ -65,11 +86,38 @@ namespace bglx::test
 		std::stack<V> unprocessed_sinks;
 
 		E_Res_List feedback_edges_res;
+		size_t in_degree(V v)
+		{
+			const auto& v_prop = g[v];
+			return v_prop.in_edge_list.size();
+		}
 
+		void clear_vertex(V v)
+		{
+			auto out_edges = boost::out_edges(v, g);
+
+			for(auto e_it = out_edges.first; e_it != out_edges.second; ++e_it)
+			{
+				const auto& e = *e_it;
+				const auto& e_prop = g[e];
+				auto e_id = e_prop.edge_id;
+				const auto& e_info = edges[e_id];
+				auto tgt = boost::target(e, g);
+				g[tgt].in_edge_list.erase(e_info.in_edge_list_it);
+				//boost::remove_edge(e_it, g);
+			}
+			boost::clear_out_edges(v, g);
+
+			//handle in edges differently
+			for(auto e_id : g[v].in_edge_list)
+			{
+				boost::remove_edge(edges[e_id].out_edge_it_boost, g);
+			}
+		}
 
 		void init_v_to_bin(V v)
 		{
-			auto deg_in = boost::in_degree(v, g);
+			auto deg_in = in_degree(v);
 			auto deg_out = boost::out_degree(v, g);
 
 			if (deg_in == 0)
@@ -127,6 +175,9 @@ namespace bglx::test
 
 		void init(const Dag& g_origin)
 		{
+			auto nr_edges = boost::num_edges(g_origin);
+			edges.reserve(nr_edges);
+
 			auto max_in_degree = std::numeric_limits<int>::min();
 			auto max_out_degree = std::numeric_limits<int>::min();
 			auto v_copier = [&](const Vertex v_origin, const V v)
@@ -136,12 +187,14 @@ namespace bglx::test
 
 			auto e_copier = [&](const Edge& e_origin, const E& e)
 			{
-				g[e].e_origin = e_origin;
+
 			};
+
 			boost::copy_graph(g_origin, g, boost::vertex_copy(v_copier).edge_copy(e_copier));
+
 			for (auto v : boost::make_iterator_range(boost::vertices(g)))
 			{
-				auto in_deg = static_cast<int>(boost::in_degree(v, g));
+				auto in_deg = static_cast<int>(in_degree(v));
 				auto out_deg = static_cast<int>(boost::out_degree(v, g));
 				if (in_deg > max_in_degree)
 				{
@@ -150,6 +203,18 @@ namespace bglx::test
 				if (out_deg > max_out_degree)
 				{
 					max_out_degree = out_deg;
+				}
+
+				auto out_edges = boost::out_edges(v, g);
+				for(auto boost_e_it = out_edges.first; boost_e_it != out_edges.second; ++boost_e_it)
+				{
+					const auto& e = *boost_e_it;
+					auto e_id = edges.size();
+					auto tgt = boost::target(e, g);
+					g[tgt].in_edge_list.emplace_back(e_id);
+					auto e_it = std::prev(g[tgt].in_edge_list.end());
+					edges.emplace_back(Edge_Info{ e_it, boost_e_it, e });
+					g[e].edge_id = e_id;
 				}
 			}
 			max_out_deg = max_out_degree;
@@ -191,8 +256,8 @@ namespace bglx::test
 					decrease_in_degree_on_v(tgt);
 				}
 				add_to_s1(src);
-				boost::clear_vertex(src, g);
-				boost::remove_vertex(src, g);
+				clear_vertex(src);
+				//boost::remove_vertex(src, g);
 			}
 		}
 
@@ -202,13 +267,14 @@ namespace bglx::test
 			{
 				auto tgt = unprocessed_sinks.top();
 				unprocessed_sinks.pop();
-				for (auto src : boost::make_iterator_range(boost::inv_adjacent_vertices(tgt, g)))
+
+				for (auto e_id : g[tgt].in_edge_list)
 				{
-					decrease_out_degree_on_v(src);
+					decrease_out_degree_on_v(boost::source(edges[e_id].edge, g));
 				}
 				add_to_s2(tgt);
-				boost::clear_vertex(tgt, g);
-				boost::remove_vertex(tgt, g);
+				clear_vertex(tgt);
+				//boost::remove_vertex(tgt, g);
 			}
 		}
 
@@ -221,13 +287,15 @@ namespace bglx::test
 			{
 				decrease_in_degree_on_v(tgt);
 			}
-			for (const auto& e : boost::make_iterator_range(boost::in_edges(v, g)))
+
+
+			for (auto e_id : g[v].in_edge_list)
 			{
-				//these are the feedback arcs
-				feedback_edges_res.emplace_back(g[e].e_origin);
-				auto src = boost::source(e, g);
+				auto src = boost::source(edges[e_id].edge, g);
+				feedback_edges_res.emplace_back(std::pair<Vertex, Vertex>{g[src].v_origin, g[v].v_origin});
 				decrease_out_degree_on_v(src);
 			}
+
 			add_to_s1(v);
 
 			if (bin.v_list.empty())
@@ -235,8 +303,18 @@ namespace bglx::test
 				handle_emptied_bin(bin);
 			}
 
-			boost::clear_vertex(v, g);
-			boost::remove_vertex(v, g);
+			/*
+			for(const auto& e : boost::make_iterator_range(boost::in_edges(v, g)))
+			{
+				boost::remove_edge(e, g);
+			}
+			for (const auto& e : boost::make_iterator_range(boost::out_edges(v, g)))
+			{
+				boost::remove_edge(e, g);
+			}
+			*/
+			clear_vertex(v);
+			//boost::remove_vertex(v, g);
 		}
 
 		void process()
@@ -246,8 +324,8 @@ namespace bglx::test
 				//empty graph
 				return;
 			}
-
-			while (boost::num_vertices(g) != 0)
+			auto nrVertices = boost::num_vertices(g);
+			while (s1.size() + s2.size() != nrVertices)
 			{
 				while (!(unprocessed_sources.empty() && unprocessed_sinks.empty()))
 				{
@@ -355,7 +433,7 @@ namespace bglx::test
 		{
 			auto& v_prop = g[v];
 			auto old_deg_diff = v_prop.deg_diff;
-			auto old_in_deg = boost::in_degree(v, g);
+			auto old_in_deg = in_degree(v);
 			auto old_out_deg = boost::out_degree(v, g);
 
 			if (old_out_deg == 0)
@@ -404,7 +482,7 @@ namespace bglx::test
 			auto& v_prop = g[v];
 			auto old_deg_diff = v_prop.deg_diff;
 			auto old_out_deg = boost::out_degree(v, g);
-			auto old_in_deg = boost::in_degree(v, g);
+			auto old_in_deg = in_degree(v);
 
 			if (old_out_deg > 0 && old_in_deg == 0)
 			{
@@ -452,6 +530,7 @@ namespace bglx::test
 		boost::minstd_rand gen;
 		// Create graph with 100 nodes and edges with probability 0.05
 		Dag g(ERGen(gen, 325557, 0.00003034467), ERGen(), 100);
+		//Dag g(ERGen(gen, 1000, 0.001), ERGen(), 100);
 
 		//Dag g;
 		/*
