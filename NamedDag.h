@@ -29,7 +29,7 @@ namespace bglx::test
 	};
 
 	using Dag = boost::adjacency_list<
-		boost::setS,
+		boost::vecS,
 		boost::vecS,
 		boost::directedS,
 		VertexProperty,

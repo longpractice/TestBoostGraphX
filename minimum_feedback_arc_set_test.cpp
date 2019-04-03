@@ -12,37 +12,108 @@
 
 namespace bglx::test
 {
-	typedef boost::erdos_renyi_iterator<boost::minstd_rand, Dag> ERGen;
-	TEST_CASE("")
+	TEST_CASE("MFAS: Edge-case: empty graph")
 	{
+		Dag g;
+		Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag> solver(g);
+		REQUIRE(solver.feedback_arc_set().empty());
+		REQUIRE(solver.topological_sorted_vertices().empty());
+	}
+
+	TEST_CASE("MFAS: Edge-case: isolated vertices")
+	{
+		SECTION("Single vertex")
+		{
+			Dag g;
+			auto v = boost::add_vertex(g);
+			Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag> solver(g);
+			REQUIRE(solver.feedback_arc_set().empty());
+			REQUIRE(solver.topological_sorted_vertices().front() == v);
+		}
+
+		SECTION("Multiple vertices")
+		{
+			Dag g;
+			auto v0 = boost::add_vertex(g);
+			auto v1 = boost::add_vertex(g);
+			auto v2 = boost::add_vertex(g);
+
+			Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag> solver(g);
+			REQUIRE(solver.feedback_arc_set().empty());
+			REQUIRE(solver.topological_sorted_vertices().size() == 3);
+
+			std::unordered_set<Vertex> vertices(solver.topological_sorted_vertices().begin(),
+			                                    solver.topological_sorted_vertices().end());
+			REQUIRE(vertices == std::unordered_set<Vertex>{ v0, v1, v2 });
+		}
+	}
+
+	TEST_CASE("MFAS:property map")
+	{
+		Dag_VSet dag;
+		auto v0 = boost::add_vertex(dag);
+		auto v1 = boost::add_vertex(dag);
+		auto v2 = boost::add_vertex(dag);
+		boost::add_edge(v1, v2, dag);
+		boost::add_edge(v2, v0, dag);
+
+		std::unordered_map<Dag_VSet::vertex_descriptor, size_t> vMap =
+		{
+			{v0, 1},
+			{v1, 2},
+			{v2, 0}
+		};
+
+		auto iMap = boost::associative_property_map<
+			std::unordered_map<Dag_VSet::vertex_descriptor, size_t>
+		>(vMap);
+
+		Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag_VSet> solver(dag, iMap);
+		REQUIRE(solver.feedback_arc_set().empty());
+		REQUIRE(
+			solver.topological_sorted_vertices()
+			== std::list<Dag_VSet::vertex_descriptor>{v1, v2, v0}
+		);
+	}
+
+	TEST_CASE("MFAS: Simple graph")
+	{
+		Dag g;
+		auto v0 = boost::add_vertex(g);
+		auto v1 = boost::add_vertex(g);
+		auto v2 = boost::add_vertex(g);
+
+		SECTION("Parallel edges")
+		{
+			boost::add_edge(v1, v0, g);
+			boost::add_edge(v1, v0, g);
+			boost::add_edge(v2, v1, g);
+
+			Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag> solver(g);
+			REQUIRE(solver.feedback_arc_set().empty());
+			REQUIRE(solver.topological_sorted_vertices() == std::list<Vertex>{v2, v1, v0});
+		}
+
+		SECTION("Parallel edges, with feedback")
+		{
+			boost::add_edge(v1, v0, g);
+			boost::add_edge(v1, v0, g);
+			boost::add_edge(v2, v1, g);
+			boost::add_edge(v0, v2, g);
+
+			Minimum_Feedback_Arc_Set_Solver_Eades_Lin<Dag> solver(g);
+			REQUIRE(solver.feedback_arc_set().size() == 1);
+			REQUIRE(solver.topological_sorted_vertices().size() == 3);
+		}
+	}
+
+
+	TEST_CASE("MFAS: Erdos-Renyi-model test")
+	{
+		typedef boost::erdos_renyi_iterator<boost::minstd_rand, Dag> ERGen;
 		boost::minstd_rand gen;
 		// Create graph with 300000 nodes and edges with probability 0.00003
 		Dag g(ERGen(gen, 300000, 0.00003), ERGen(), 100);
-		//Dag g(ERGen(gen, 1000, 0.001), ERGen(), 100);
-
-		//Dag g;
-		/*
-		for(int i = 0; i < 8; ++i)
-		{
-			boost::add_vertex(g);
-		}
-		boost::add_edge(0, 3, g);
-
-		boost::add_edge(1, 3, g);
-		boost::add_edge(1, 4, g);
-
-		boost::add_edge(2, 4, g);
-
-		boost::add_edge(3, 5, g);
-		boost::add_edge(3, 6, g);
-		boost::add_edge(3, 7, g);
-
-		boost::add_edge(4, 6, g);
-
-		boost::add_edge(5, 0, g);
-		boost::add_edge(7, 2, g);
-		boost::add_edge(4, 1, g);
-*/
 		auto nrEdges = boost::num_edges(g);
 		auto nrVertices = boost::num_vertices(g);
 		std::cout << "Nr edges " << nrEdges << std::endl;
@@ -70,8 +141,10 @@ namespace bglx::test
 		bool ifMatchHeuristicWorstCase = nrFeedbackEdges <= nrEdges / 2 - nrVertices / 6;
 		REQUIRE(ifMatchHeuristicWorstCase);
 		std::set<std::pair<Vertex, Vertex>> feedback_edges;
+
 		for (auto [v1, v2] : solver.feedback_arc_set())
 		{
+			//erdos-renyi model does not introduce any parallel edges
 			if (vertexOrder.at(v1) <= vertexOrder.at(v2))
 			{
 				throw std::exception("Not feedback.");
@@ -79,7 +152,7 @@ namespace bglx::test
 			auto [it, ok] = feedback_edges.emplace(std::pair<Vertex, Vertex>{v1, v2});
 			if (!ok)
 			{
-				throw std::exception("Feedback arc dup.");
+				throw std::exception("Feedback arc dup for non-parallel edge Erdos-Renyi model.");
 			}
 		}
 
