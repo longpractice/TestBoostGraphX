@@ -16,8 +16,8 @@ namespace bglx::test
 	TEST_CASE("")
 	{
 		boost::minstd_rand gen;
-		// Create graph with 100 nodes and edges with probability 0.05
-		Dag g(ERGen(gen, 32555, 0.00003034467), ERGen(), 100);
+		// Create graph with 300000 nodes and edges with probability 0.00003
+		Dag g(ERGen(gen, 300000, 0.00003), ERGen(), 100);
 		//Dag g(ERGen(gen, 1000, 0.001), ERGen(), 100);
 
 		//Dag g;
